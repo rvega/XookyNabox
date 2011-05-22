@@ -1,16 +1,28 @@
 #include <iostream>
+#include <fstream>
 #include <string>
+#include <getopt.h>
 #include <portaudio.h>
 #include <ZenGarden.h>
 
 #include "main.h"
 
-#pragma mark GLOBAL_VARIABLES
-///////////////////////////////////////////////////////////////////////////////
-// GLOBAL_VARIABLES
-///////////////////////////////////////////////////////////////////////////////
+#define DEBUG 1
+
+#define XOOKY_VERSION "2011-05-22"
+#define ZEN_VERSION "2011-05-20"
+
+// ====================
+// = GLOBAL_VARIABLES =
+// ====================
+int audioInDev = 0;
+int audioOutDev = 2;
 int sampleRate = 44100;
 int bufferLength = 32;
+
+std::string filename;
+std::string directory;
+
 PaStream *stream;
 PdContext *context;
 
@@ -18,12 +30,11 @@ PdContext *context;
 float *output = (float*)malloc(bufferLength*2*sizeof(float));
 float *input = (float*)malloc(bufferLength*2*sizeof(float));
 
-#pragma mark MAIN
-///////////////////////////////////////////////////////////////////////////////
-// MAIN
-///////////////////////////////////////////////////////////////////////////////
-int main (int argc, char const* argv[]) {
-   //TODO: Parse command line parameters to set buffer size, etc. Look at puredata --nogui params.
+// ========
+// = MAIN =
+// ========
+int main (int argc, char *argv[]) {
+   parseParameters(argc, argv);
 
    initZenGarden();
    initAudioIO();
@@ -39,17 +50,109 @@ int main (int argc, char const* argv[]) {
    return 0;
 }
 
-#pragma mark INITIALIZE ZEN GARDEN
-///////////////////////////////////////////////////////////////////////////////
-// INITIALIZE ZEN GARDEN
-///////////////////////////////////////////////////////////////////////////////
-void initZenGarden(){
-   //TODO: get from command line params instead
-   // std::string filename = "00_wobbly_mono.pd";
-   // std::string filename = "01_wobbly_stereo.pd";   
-   std::string filename = "02_HelloWorld1.pd";
-   std::string directory = "/Users/rafaelvega/Projects/Active/XookyNabox/repo/patches/";
+void parseParameters(int argc, char *argv[]){
+   // Help message:
+   std::string help = "Usage: xooky_nabox [-flags] <file>\n\n";
+   help += "Configuration flags:\n";
+   help += "-audioindev <n>      -- specify audio in device\n";
+   help += "-audiooutdev <n>     -- specify audio out device\n";
+   help += "-r <n>               -- specify sample rate\n";
+   help += "-blocksize <n>       -- specify audio I/O block size in sample frames\n";
+   help += "-listdev             -- don't run xooky, just print list of audio devices\n";
+   help += "-version             -- don't run xooky, just print which version it is\n";
+   help += "-help                -- don't run xooky, just print this message\n\n";
 
+   // Get the flag values and store.
+   int showVersion = 0;
+   int showHelp = 0;
+   int showDevices = 0;
+   const struct option long_options[] = {
+      {"audioindev", required_argument, NULL, 'i'},
+         {"audiooutdev", required_argument, NULL, 'o'},
+         {"r", required_argument, NULL, 'r'},
+         {"blocksize", required_argument, NULL, 'b'},
+         {"listdev", no_argument, &showDevices, 1},
+         {"version", no_argument, &showVersion, 1},
+         {"help", no_argument, &showHelp, 1},
+         { NULL, no_argument, NULL, 0 }
+   };
+   int option_index;
+   int c;
+   while((c = getopt_long_only(argc, argv, "i:o:r:", long_options, &option_index)) != -1){
+      switch (c){
+         case 'i':
+         audioInDev = atoi(optarg);
+         break;
+         case 'o':
+         audioOutDev = atoi(optarg);
+         break;
+         case 'r':
+         sampleRate = atoi(optarg);
+         break;
+         case 'b':
+         bufferLength = atoi(optarg);
+         break;
+         case '0':
+            // One of the flags was entered, nothing to do.
+         break;
+         default:
+         break;
+      }
+   }
+
+   // If no params
+   if(argc<=1){
+      std::cout << help;
+      exit(1);
+   }
+
+   #ifdef DEBUG
+   std::cout << "audioInDev: " << audioInDev << std::endl;
+   std::cout << "audioOutDev: " << audioOutDev << std::endl;
+   std::cout << "sampleRate: " << sampleRate << std::endl;
+   std::cout << "bufferLength: " << bufferLength << std::endl;
+   std::cout << "showVersion: " << showVersion << std::endl;
+   std::cout << "showHelp: " << showHelp << std::endl;
+   std::cout << "showDevices: " << showDevices << std::endl;
+   std::cout << "file: " << argv[argc-1] << std::endl << std::endl;
+   #endif
+
+   if(showHelp == 1){
+      std::cout << help;
+      exit(0);
+   }
+
+   if(showVersion == 1){
+      std::cout << "XookyNabox version is " << XOOKY_VERSION << std::endl;
+      std::cout << "ZenGarden version is " << ZEN_VERSION << std::endl;
+      exit(0);
+   }
+
+   if(showDevices){
+      listDevices();
+      exit(0);
+   }
+
+   //Last argument must be a filename. Validate and store.
+   char* arg_patch = argv[argc-1];
+   std::ifstream patch_file(arg_patch);
+   if(!patch_file.good()){
+      std::cout << "The file " << arg_patch <<" is not valid.\n";
+      std::cout << help;
+      exit(1);		
+   }
+   char patch_path[1024];
+   realpath(arg_patch, patch_path);
+   std::string patch_path_str = std::string(patch_path);
+   unsigned int pos = patch_path_str.find_last_of('/');
+   directory = patch_path_str.substr(0,pos+1);
+   filename = patch_path_str.substr(pos+1);
+}
+
+// =========================
+// = INITIALIZE ZEN GARDEN =
+// =========================
+void initZenGarden(){
    context = zg_new_context(2, 2, bufferLength, (float)sampleRate, zengardenCallback, NULL); // # inputs, # outputs, samplerate, callback, userData
    PdGraph *graph = zg_new_graph(context, (char*)directory.c_str(), (char*)filename.c_str());
    if (graph == NULL) {
@@ -65,10 +168,9 @@ void stopZengarden(){
    zg_delete_context(context);
 }
 
-#pragma mark INITIALIZE AUDIO I/O
-///////////////////////////////////////////////////////////////////////////////
-// INITIALIZE AUDIO I/O
-///////////////////////////////////////////////////////////////////////////////
+// ========================
+// = INITIALIZE AUDIO I/O =
+// ========================
 void initAudioIO(){
    PaError err;
 
@@ -77,15 +179,6 @@ void initAudioIO(){
       std::cout << "PortAudio error:" << Pa_GetErrorText( err );
       exit(1);
    }
-
-   // Show available devices
-   // PaDeviceIndex ndev = Pa_GetDeviceCount();
-   // for(int i=0; i<ndev; i++){ 
-   //    const PaDeviceInfo *info = Pa_GetDeviceInfo((PaDeviceIndex) i);
-   //    if (info->maxOutputChannels > 0) std::cout << "output device: ";
-   //    if (info->maxInputChannels > 0) std::cout << "input device: "; 
-   //    std::cout << i << ": " << info->name << std::endl;
-   // }
 
    // Open an audio I/O stream.
    PaStreamParameters outParameters;
@@ -100,7 +193,6 @@ void initAudioIO(){
    inParameters.device = 0; // 0 is "Built in microphone" on my laptop. TODO: get from command line param or something.
    inParameters.sampleFormat = paFloat32;
 
-   // err = Pa_OpenDefaultStream(&stream, 2, 2, paFloat32, sampleRate, bufferLength, paCallback, context); //2 inputs, 2 outputs, 32bit float samples, sample rate, buffer length, callback function, user data to pass to callback function
    err = Pa_OpenStream(&stream, &inParameters, &outParameters, sampleRate, bufferLength, paNoFlag, paCallback, context);
    if(err!= paNoError){
       std::cout << "PortAudio error:" << Pa_GetErrorText( err );
@@ -115,6 +207,39 @@ void initAudioIO(){
    }
 }
 
+void listDevices(){
+   PaError err;
+
+   err = Pa_Initialize();
+   if(err!= paNoError){
+      std::cout << "PortAudio error:" << Pa_GetErrorText( err );
+      exit(1);
+   }
+
+   // Show available devices
+   PaDeviceIndex ndev = Pa_GetDeviceCount();
+   if(ndev<0){
+      std::cout << "PortAudio error:" << Pa_GetErrorText( ndev );
+      exit(1);      
+   }
+   std::cout << "\nAudio output devices:\n";
+   for(int i=0; i<ndev; i++){ 
+      const PaDeviceInfo *info = Pa_GetDeviceInfo((PaDeviceIndex) i);
+      if (info->maxOutputChannels > 0){
+         std::cout << "(" << i << ") " << info->name << std::endl;
+      } 
+   }	
+
+   std::cout << "\nAudio input devices:\n";
+   for(int i=0; i<ndev; i++){ 
+      const PaDeviceInfo *info = Pa_GetDeviceInfo((PaDeviceIndex) i);
+      if (info->maxInputChannels > 0){
+         std::cout << "(" << i << ") " << info->name << std::endl;
+      } 
+   }	
+   std::cout << "\n";
+}
+
 void stopAudioIO(){
    // Stop the stream
    PaError err = Pa_StopStream( stream );
@@ -124,16 +249,17 @@ void stopAudioIO(){
    }
 }
 
-#pragma mark PORT AUDIO CALLBACK
-///////////////////////////////////////////////////////////////////////////////
-// PORT AUDIO CALLBACK
-///////////////////////////////////////////////////////////////////////////////
+
+
+// =======================
+// = PORT AUDIO CALLBACK =
+// =======================
 static int paCallback( const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void *userData ){
    PdContext *ctx = (PdContext*) userData;
    float *out = (float*)outputBuffer;
    float *in = (float*)inputBuffer;
 
-   //Zengarden works with noninterleaved buffers, portaudio works with interleaved. Changing buffer to interleaved.
+   //Zengarden works with noninterleaved buffers, portaudio works with interleaved. Changing input buffer to non-interleaved.
    for (int i=0; i<bufferLength; i++) {
       for (int channel = 0; channel < 2; channel++) {
          input[i + channel*bufferLength] = in[i*2 + channel]; 
@@ -143,7 +269,7 @@ static int paCallback( const void *inputBuffer, void *outputBuffer, unsigned lon
    // Magic :)
    zg_process(ctx, input, output);
 
-   //Zengarden works with noninterleaved buffers, portaudio works with interleaved. Changing buffer to interleaved.
+   //Zengarden works with noninterleaved buffers, portaudio works with interleaved. Changing output buffer to interleaved.
    for (int i=0; i<bufferLength; i++) {
       for (int channel = 0; channel < 2; channel++) {
          out[i*2 + channel] = output[i + channel*bufferLength]; 
@@ -152,24 +278,22 @@ static int paCallback( const void *inputBuffer, void *outputBuffer, unsigned lon
    return 0;
 }
 
-#pragma mark ZENGARDEN_CALLBACK
-///////////////////////////////////////////////////////////////////////////////
-// ZENGARDEN_CALLBACK
-///////////////////////////////////////////////////////////////////////////////
+// ======================
+// = ZENGARDEN_CALLBACK =
+// ======================
 void zengardenCallback(ZGCallbackFunction function, void *userData, void *ptr) {
-  switch (function) {
-    case ZG_PRINT_STD: {
-      std::cout << "ZG_PRINT_STD: " << (char *)ptr << std::endl;
-      break;
-    }
-    case ZG_PRINT_ERR: {
-      std::cout << "ZG_PRINT_ERR: " << (char *)ptr << std::endl;
-      break;
-    }
-    case ZG_PD_DSP: {
-      std::cout << "ZG_PD_DSP: " << (char *)ptr << std::endl;
-      break;
-    }
-  }
+   switch (function) {
+      case ZG_PRINT_STD: {
+         std::cout << "ZG_PRINT_STD: " << (char *)ptr << std::endl;
+         break;
+      }
+      case ZG_PRINT_ERR: {
+         std::cout << "ZG_PRINT_ERR: " << (char *)ptr << std::endl;
+         break;
+      }
+      case ZG_PD_DSP: {
+         std::cout << "ZG_PD_DSP: " << (char *)ptr << std::endl;
+         break;
+      }
+   }
 }
-

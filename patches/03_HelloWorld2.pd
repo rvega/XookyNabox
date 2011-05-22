@@ -1,0 +1,23 @@
+#N canvas 407 329 450 300 10;
+#X obj 104 135 *~;
+#X obj 166 118 osc~;
+#X obj 103 93 *~ 0.5;
+#X obj 166 92 +~ 250;
+#X obj 105 180 dac~;
+#X obj 166 31 osc~ 0.1;
+#X obj 166 50 +~ 1;
+#X obj 165 70 *~ 100;
+#X text 246 141 Chuckynabox1;
+#X obj 103 43 osc~ 250;
+#X text 81 204 Modulación de anillo. Un oscilador senoidal a 250Hz
+es multiplicado por un oscilador que cambia de frecuencia entre 250
+y 450 Hz;
+#X connect 0 0 4 0;
+#X connect 0 0 4 1;
+#X connect 1 0 0 1;
+#X connect 2 0 0 0;
+#X connect 3 0 1 0;
+#X connect 5 0 6 0;
+#X connect 6 0 7 0;
+#X connect 7 0 3 0;
+#X connect 9 0 2 0;

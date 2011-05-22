@@ -7,5 +7,7 @@ static int paCallback( const void *inputBuffer, void *outputBuffer, unsigned lon
 void initZenGarden();
 void zengardenCallback(ZGCallbackFunction function, void *userData, void *ptr);
 void stopZengarden();
+void parseParameters(int argc, char *argv[]);
+void listDevices();
 
 #endif
