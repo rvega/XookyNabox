@@ -1,0 +1,9 @@
+XookyNabox
+By Rafael Vega <rvega@elsoftwarehamuerto.org>
+
+Xooky Nabox is a standalone program for runnin Pure Data patches on embedded devices.
+
+Requirements
+------------
+* libsndfile 1.0.23
+* portaudio 19.20071207
