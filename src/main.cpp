@@ -7,7 +7,7 @@
 
 #include "main.h"
 
-#define DEBUG 1
+// #define DEBUG 1
 
 #define XOOKY_VERSION "2011-05-22"
 #define ZEN_VERSION "2011-05-20"
@@ -184,13 +184,13 @@ void initAudioIO(){
    PaStreamParameters outParameters;
    bzero(&outParameters, sizeof(outParameters));
    outParameters.channelCount = 2;
-   outParameters.device = 2; // 2 is "Built in output" on my laptop. TODO: get from command line param or something.
+   outParameters.device = audioOutDev;
    outParameters.sampleFormat = paFloat32;
 
    PaStreamParameters inParameters;
    bzero(&inParameters, sizeof(inParameters));
    inParameters.channelCount = 2;
-   inParameters.device = 0; // 0 is "Built in microphone" on my laptop. TODO: get from command line param or something.
+   inParameters.device = audioOutDev;
    inParameters.sampleFormat = paFloat32;
 
    err = Pa_OpenStream(&stream, &inParameters, &outParameters, sampleRate, bufferLength, paNoFlag, paCallback, context);
