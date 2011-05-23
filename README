@@ -14,7 +14,8 @@ Requirements
 Compiling
 ---------
 > cd /path/to/xooky_nabox/vendor/ZenGarden/src
-> make
+> make libzengarden
+> sudo make install
 > cd /path/to/xooky_nabox/src
 > make
 
