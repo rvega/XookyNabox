@@ -15,8 +15,8 @@ endif
 # Parameters
 COMPILER = g++
 LINKER = g++
-COMPILER_FLAGS = -g -c `pkg-config --cflags sndfile` -I../vendor/ZenGarden/src
-LINKER_FLAGS = `pkg-config --libs sndfile` -lpthread -lzengarden -lportaudio
+COMPILER_FLAGS = -Wall -g -c -I../vendor/ZenGarden/src
+LINKER_FLAGS = -lsndfile -lpthread -lportaudio -lzengarden
 CPP_FILES = $(wildcard *.cpp)
 OBJECTS = $(notdir $(CPP_FILES:.cpp=.o)) # List of .cpp files with .o extension
 
