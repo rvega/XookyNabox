@@ -192,7 +192,7 @@ void initAudioIO(){
    PaStreamParameters inParameters;
    memset(&inParameters, '\0', sizeof(inParameters));
    inParameters.channelCount = 2;
-   inParameters.device = audioOutDev;
+   inParameters.device = audioInDev;
    inParameters.sampleFormat = paFloat32;
 
    err = Pa_OpenStream(&stream, &inParameters, &outParameters, sampleRate, bufferLength, paNoFlag, paCallback, context);
