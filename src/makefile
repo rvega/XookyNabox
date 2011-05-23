@@ -11,14 +11,16 @@ MORE_LINKER_FLAGS = -framework CoreFoundation -framework CoreAudio -framework Ac
 ZG_LIB_PATH = ../vendor/ZenGarden/libs/Darwin-i386
 else ifeq "$(shell uname)" "Linux"
 MORE_LINKER_FLAGS = 
-ZG_LIB_PATH = ../vendor/ZenGarden/libs/Linux-i686
+ZG_LIB_PATH = ../vendor/ZenGarden/libs/Linux-i686/
+#ZG_LIB_PATH = /home/rafaelvega/Desktop/XookyNabox/vendor/ZenGarden/libs/Linux-i686
+#ZG_LIB_PATH = ./
 endif
 
 # Parameters
 COMPILER = g++
 LINKER = g++
-COMPILER_FLAGS = -g -c `pkg-config --cflags sndfile` -I../vendor/ZenGarden/src
-LINKER_FLAGS = `pkg-config --libs sndfile` -lpthread -L$(ZG_LIB_PATH) -lzengarden -lportaudio
+COMPILER_FLAGS = -Wall -g -c -I../vendor/ZenGarden/src
+LINKER_FLAGS = -lsndfile -lpthread -lportaudio -L$(ZG_LIB_PATH) -lzengarden
 CPP_FILES = $(wildcard *.cpp)
 OBJECTS = $(notdir $(CPP_FILES:.cpp=.o)) # List of .cpp files with .o extension
 

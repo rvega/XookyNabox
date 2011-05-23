@@ -1,6 +1,8 @@
-#include <iostream>
+#include <iostream> 
 #include <fstream>
 #include <string>
+#include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 #include <portaudio.h>
 #include <ZenGarden.h>
@@ -182,13 +184,13 @@ void initAudioIO(){
 
    // Open an audio I/O stream.
    PaStreamParameters outParameters;
-   bzero(&outParameters, sizeof(outParameters));
+   memset(&outParameters, '\0', sizeof(outParameters));
    outParameters.channelCount = 2;
    outParameters.device = audioOutDev;
    outParameters.sampleFormat = paFloat32;
 
    PaStreamParameters inParameters;
-   bzero(&inParameters, sizeof(inParameters));
+   memset(&inParameters, '\0', sizeof(inParameters));
    inParameters.channelCount = 2;
    inParameters.device = audioOutDev;
    inParameters.sampleFormat = paFloat32;
