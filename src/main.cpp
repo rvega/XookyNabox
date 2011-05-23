@@ -78,7 +78,7 @@ void parseParameters(int argc, char *argv[]){
    };
    int option_index;
    int c;
-   while((c = getopt_long_only(argc, argv, "i:o:r:", long_options, &option_index)) != -1){
+   while((c = getopt_long_only(argc, argv, "i:o:r:b:", long_options, &option_index)) != -1){
       switch (c){
          case 'i':
          audioInDev = atoi(optarg);
