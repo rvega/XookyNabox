@@ -11,6 +11,8 @@
 
 // #define DEBUG 1
 
+// TODO: write output to an error log instead of cout and cerr
+
 #define XOOKY_VERSION "2011-05-22"
 #define ZEN_VERSION "2011-05-20"
 
@@ -42,10 +44,11 @@ int main (int argc, char *argv[]) {
    initAudioIO();
 
    // Keep the program alive.
-   char c;
-   std::cout << "Running, press any key and then press <Enter> to terminate.";
-   std::cin >> c;
+   while(1){
+      sleep(100);
+   }
 
+   // This is obviously never reached, so far no problems with that...
    stopAudioIO();
    stopZengarden();
 
