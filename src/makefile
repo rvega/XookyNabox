@@ -28,6 +28,10 @@ main: $(OBJECTS)
 %.o: %.cpp
 	$(COMPILER) $(COMPILER_FLAGS) $*.cpp -o $*.o
 
+# Install 
+install: main
+	cp -f ../bin/xooky_nabox /usr/bin
+
 # Clean
 .PHONY: clean
 clean:
