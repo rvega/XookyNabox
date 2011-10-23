@@ -1,16 +1,18 @@
 #include <iostream> 
 #include <fstream>
 #include <string>
-#include <string.h>
 #include <stdlib.h>
 #include <getopt.h>
-#include <portaudio.h>
+
 #include "z_libpd.h"
+#include <jack/jack.h>
+#include <jack/transport.h>
 
 #include "main.h"
 
-// #define DEBUG 1
+typedef jack_default_audio_sample_t sample_t;
 
+// #define DEBUG 1
 // TODO: write output to an error log instead of cout and cerr
 
 #define XOOKY_VERSION "2011-10-22"
@@ -19,16 +21,19 @@
 // ====================
 // = GLOBAL_VARIABLES =
 // ====================
-int audioInDev = 0;
-int audioOutDev = 2;
-int sampleRate = 44100;
-int bufferLength = 64;
+int sampleRate = 0; // This is set by the JACK server in the initJack function
+const int bufferLength = 64; // Always 64 for libpd
+
+jack_client_t *client;
+jack_port_t *portO1;
+jack_port_t *portO2;
+jack_port_t *portI1;
+jack_port_t *portI2;
 
 std::string filename;
 std::string directory;
 
-PaStream *stream;
-void *patchFile;
+void *patchFile; // Pointer to the .pd file
 
 //Interleaved io buffers:
 float *output = (float*)malloc(bufferLength*2*sizeof(float));
@@ -40,63 +45,33 @@ float *input = (float*)malloc(bufferLength*2*sizeof(float));
 int main (int argc, char *argv[]) {
    parseParameters(argc, argv);
 
-   initLibPd();
-   initAudioIO();
+	 initLibPd();
+	 initJackAudioIO();
 
    // Keep the program alive.
-   while(1){
-      sleep(100);
-   }
-
-   // This is obviously never reached, so far no problems with that...
-   stopAudioIO();
-   stopLibPd();
+	 while(1){
+			sleep(1);
+	 }
 
    return 0;
 }
 
 void parseParameters(int argc, char *argv[]){
    // Help message:
-   std::string help = "Usage: xooky_nabox [-flags] <file>\n\n";
-   help += "Configuration flags:\n";
-   help += "-audioindev <n>      -- specify audio in device\n";
-   help += "-audiooutdev <n>     -- specify audio out device\n";
-   help += "-r <n>               -- specify sample rate\n";
-   help += "-blocksize <n>       -- specify audio I/O block size in sample frames\n";
-   help += "-listdev             -- don't run xooky, just print list of audio devices\n";
-   help += "-version             -- don't run xooky, just print which version it is\n";
-   help += "-help                -- don't run xooky, just print this message\n\n";
+   std::string help = "Usage: xooky_nabox [-version] [-help] <file>\n\n";
 
    // Get the flag values and store.
    int showVersion = 0;
    int showHelp = 0;
-   int showDevices = 0;
    const struct option long_options[] = {
-      {"audioindev", required_argument, NULL, 'i'},
-         {"audiooutdev", required_argument, NULL, 'o'},
-         {"r", required_argument, NULL, 'r'},
-         {"blocksize", required_argument, NULL, 'b'},
-         {"listdev", no_argument, &showDevices, 1},
-         {"version", no_argument, &showVersion, 1},
-         {"help", no_argument, &showHelp, 1},
-         { NULL, no_argument, NULL, 0 }
+			{"version", no_argument, &showVersion, 1},
+			{"help", no_argument, &showHelp, 1},
+			{ NULL, no_argument, NULL, 0 }
    };
    int option_index;
    int c;
    while((c = getopt_long_only(argc, argv, "i:o:r:b:", long_options, &option_index)) != -1){
       switch (c){
-         case 'i':
-         audioInDev = atoi(optarg);
-         break;
-         case 'o':
-         audioOutDev = atoi(optarg);
-         break;
-         case 'r':
-         sampleRate = atoi(optarg);
-         break;
-         case 'b':
-         bufferLength = atoi(optarg);
-         break;
          case '0':
             // One of the flags was entered, nothing to do.
          break;
@@ -112,13 +87,8 @@ void parseParameters(int argc, char *argv[]){
    }
 
    #ifdef DEBUG
-   std::cout << "audioInDev: " << audioInDev << std::endl;
-   std::cout << "audioOutDev: " << audioOutDev << std::endl;
-   std::cout << "sampleRate: " << sampleRate << std::endl;
-   std::cout << "bufferLength: " << bufferLength << std::endl;
    std::cout << "showVersion: " << showVersion << std::endl;
    std::cout << "showHelp: " << showHelp << std::endl;
-   std::cout << "showDevices: " << showDevices << std::endl;
    std::cout << "file: " << argv[argc-1] << std::endl << std::endl;
    #endif
 
@@ -129,12 +99,7 @@ void parseParameters(int argc, char *argv[]){
 
    if(showVersion == 1){
       std::cout << "XookyNabox version is " << XOOKY_VERSION << std::endl;
-      std::cout << "LibPD version is " << LIB_PD_VERSION << std::endl;
-      exit(0);
-   }
-
-   if(showDevices){
-      listDevices();
+      std::cout << "LibPd version is " << LIB_PD_VERSION << std::endl;
       exit(0);
    }
 
@@ -158,114 +123,92 @@ void parseParameters(int argc, char *argv[]){
 // = INITIALIZE LIB PD =
 // =====================
 void initLibPd(){
-   libpd_init();
-   libpd_init_audio(2, 2, sampleRate, 1); //nInputs, nOutputs, sampleRate, ticksPerBuffer
+	 // The Jack server only seems to run fine at 256 samples per frame and libpd only processess samples
+	 // in chunks (ticks) of n*64 samples at a time. We need to set the ticksPerBuffer to 4.
 
-   // send compute audio 1 message to pd
-   libpd_start_message(1);
-   libpd_add_float(1.0f);
-   libpd_finish_message("pd", "dsp");
 
-   patchFile = libpd_openfile( (char*)filename.c_str(), (char*)directory.c_str() );
-   if (patchFile == NULL) {
-      std::cout << "Could not open patch";
-      exit(1);
-   }
+	 // init the pd engine
+	 libpd_init();
+	 libpd_init_audio(2, 2, sampleRate, 4); //nInputs, nOutputs, sampleRate, ticksPerBuffer
+	 
+	 // send compute audio 1 message to pd
+	 libpd_start_message(1);
+	 libpd_add_float(1.0f);
+	 libpd_finish_message("pd", "dsp");
+	 
+	 // load the patch
+	 patchFile = libpd_openfile( (char*)filename.c_str(), (char*)directory.c_str() );
+	 if (patchFile == NULL) {
+			std::cout << "Could not open patch";
+			exit(1);
+	 }
 }
 
-void stopLibPd(){
-   libpd_closefile(patchFile);
-}
 
 // ========================
 // = INITIALIZE AUDIO I/O =
 // ========================
-void initAudioIO(){
-   PaError err;
+void initJackAudioIO(){
+	 // Create client:
+	 if((client = jack_client_open("xooky_nabox", JackNullOption, NULL)) == NULL){
+			std::cout << "jack server not running?\n";
+			exit(1);
+	 }
 
-   err = Pa_Initialize();
-   if(err!= paNoError){
-      std::cout << "PortAudio error:" << Pa_GetErrorText( err );
-      exit(1);
-   }
+	 // Register callbacks:
+	 jack_on_shutdown(client, jack_shutdown, 0);
+	 jack_set_process_callback(client, process, 0);
 
-   // Open an audio I/O stream.
-   PaStreamParameters outParameters;
-   memset(&outParameters, '\0', sizeof(outParameters));
-   outParameters.channelCount = 2;
-   outParameters.device = audioOutDev;
-   outParameters.sampleFormat = paFloat32;
+	 // Register io ports:
+	 portO1 = jack_port_register(client, "out1", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+	 portO2 = jack_port_register(client, "out2", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+	 portI1 = jack_port_register(client, "in1", JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0);
+	 portI2 = jack_port_register(client, "in2", JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0);
 
-   PaStreamParameters inParameters;
-   memset(&inParameters, '\0', sizeof(inParameters));
-   inParameters.channelCount = 2;
-   inParameters.device = audioInDev;
-   inParameters.sampleFormat = paFloat32;
+	 // Get sample rate from server
+	 sampleRate = jack_get_sample_rate(client);
+	 std::cout << "Sample rate:" << sampleRate << "\n"; 
 
-   err = Pa_OpenStream(&stream, &inParameters, &outParameters, sampleRate, bufferLength, paNoFlag, paCallback, NULL);
-   if(err!= paNoError){
-      std::cout << "PortAudio error:" << Pa_GetErrorText( err );
-      exit(1);
-   }
-
-   // Start the stream
-   err = Pa_StartStream( stream );
-   if(err!= paNoError){
-      std::cout << "PortAudio error:" << Pa_GetErrorText( err );
-      exit(1);
-   }
+	 //Go!
+	 if (jack_activate (client)) {
+			std::cout << "Cannot activate client";
+			exit(1);
+	 }
+	 
 }
 
-void listDevices(){
-   PaError err;
+// ========================
+// = JACK AUDIO CALLBACKS =
+// ========================
+int process(jack_nframes_t nframes, void *arg){
+	 // Get pointers to the input and output signals
+	 sample_t *in1 = (sample_t *) jack_port_get_buffer(portI1, nframes);
+	 sample_t *in2 = (sample_t *) jack_port_get_buffer(portI2, nframes);
+	 sample_t *out1 = (sample_t *) jack_port_get_buffer(portO1, nframes);
+	 sample_t *out2 = (sample_t *) jack_port_get_buffer(portO2, nframes);
 
-   err = Pa_Initialize();
-   if(err!= paNoError){
-      std::cout << "PortAudio error:" << Pa_GetErrorText( err );
-      exit(1);
-   }
+	 // Jack uses mono ports and pd expects interleaved stereo buffers.
+	 for(unsigned int i=0; i<nframes; i++){
+			input[i*2] = *in1;
+			input[(i*2)+1] = *in2;
+			in1++;
+			in2++;
+	 }
+ 
+	 // DSP Magic ;)
+	 libpd_process_float(input, output);
+	 
+	 for(unsigned int i=0; i<nframes; i++){
+			*out1 = output[i*2];
+			*out2 = output[(i*2)+1];
+			out1++;
+			out2++;
+	 }
 
-   // Show available devices
-   PaDeviceIndex ndev = Pa_GetDeviceCount();
-   if(ndev<0){
-      std::cout << "PortAudio error:" << Pa_GetErrorText( ndev );
-      exit(1);      
-   }
-   std::cout << "\nAudio output devices:\n";
-   for(int i=0; i<ndev; i++){ 
-      const PaDeviceInfo *info = Pa_GetDeviceInfo((PaDeviceIndex) i);
-      if (info->maxOutputChannels > 0){
-         std::cout << "(" << i << ") " << info->name << std::endl;
-      } 
-   }	
+	 return 0;
+}  
 
-   std::cout << "\nAudio input devices:\n";
-   for(int i=0; i<ndev; i++){ 
-      const PaDeviceInfo *info = Pa_GetDeviceInfo((PaDeviceIndex) i);
-      if (info->maxInputChannels > 0){
-         std::cout << "(" << i << ") " << info->name << std::endl;
-      } 
-   }	
-   std::cout << "\n";
+void jack_shutdown (void *arg){
+	 exit(1);
 }
 
-void stopAudioIO(){
-   // Stop the stream
-   PaError err = Pa_StopStream( stream );
-   if(err!= paNoError){
-      std::cout << "PortAudio error:" << Pa_GetErrorText( err );
-      exit(1);
-   }
-}
-
-// =======================
-// = PORT AUDIO CALLBACK =
-// =======================
-static int paCallback( const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void *userData ){
-   float *out = (float*)outputBuffer;
-   float *in = (float*)inputBuffer;
-   
-   libpd_process_float(in, out);
-
-   return 0;
-}

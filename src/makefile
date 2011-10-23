@@ -9,7 +9,7 @@
 COMPILER = g++
 LINKER = g++
 COMPILER_FLAGS = -Wall -g -c -I../vendor/libpd/pure-data/src -I../vendor/libpd/libpd_wrapper
-LINKER_FLAGS = -lportaudio -lpd
+LINKER_FLAGS = -lpd -ljack
 CPP_FILES = $(wildcard *.cpp)
 OBJECTS = $(notdir $(CPP_FILES:.cpp=.o)) # List of .cpp files with .o extension
 
