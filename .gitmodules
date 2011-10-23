@@ -1,3 +1,6 @@
 [submodule "vendor/ZenGarden"]
 	path = vendor/ZenGarden
 	url = git@github.com:rvega/ZenGarden.git
+[submodule "vendor/libpd"]
+	path = vendor/libpd
+	url = git@github.com:rvega/libpd.git
