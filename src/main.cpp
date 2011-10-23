@@ -1,11 +1,11 @@
 #include <iostream> 
 #include <fstream>
 #include <string>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 #include <getopt.h>
 #include <portaudio.h>
-#include <ZenGarden.h>
+#include "z_libpd.h"
 
 #include "main.h"
 
@@ -13,8 +13,8 @@
 
 // TODO: write output to an error log instead of cout and cerr
 
-#define XOOKY_VERSION "2011-05-22"
-#define ZEN_VERSION "2011-05-20"
+#define XOOKY_VERSION "2011-10-22"
+#define LIB_PD_VERSION "2011-10-22"
 
 // ====================
 // = GLOBAL_VARIABLES =
@@ -22,13 +22,13 @@
 int audioInDev = 0;
 int audioOutDev = 2;
 int sampleRate = 44100;
-int bufferLength = 32;
+int bufferLength = 64;
 
 std::string filename;
 std::string directory;
 
 PaStream *stream;
-PdContext *context;
+void *patchFile;
 
 //Interleaved io buffers:
 float *output = (float*)malloc(bufferLength*2*sizeof(float));
@@ -40,7 +40,7 @@ float *input = (float*)malloc(bufferLength*2*sizeof(float));
 int main (int argc, char *argv[]) {
    parseParameters(argc, argv);
 
-   initZenGarden();
+   initLibPd();
    initAudioIO();
 
    // Keep the program alive.
@@ -50,7 +50,7 @@ int main (int argc, char *argv[]) {
 
    // This is obviously never reached, so far no problems with that...
    stopAudioIO();
-   stopZengarden();
+   stopLibPd();
 
    return 0;
 }
@@ -129,7 +129,7 @@ void parseParameters(int argc, char *argv[]){
 
    if(showVersion == 1){
       std::cout << "XookyNabox version is " << XOOKY_VERSION << std::endl;
-      std::cout << "ZenGarden version is " << ZEN_VERSION << std::endl;
+      std::cout << "LibPD version is " << LIB_PD_VERSION << std::endl;
       exit(0);
    }
 
@@ -154,23 +154,27 @@ void parseParameters(int argc, char *argv[]){
    filename = patch_path_str.substr(pos+1);
 }
 
-// =========================
-// = INITIALIZE ZEN GARDEN =
-// =========================
-void initZenGarden(){
-   context = zg_new_context(2, 2, bufferLength, (float)sampleRate, zengardenCallback, NULL); // # inputs, # outputs, samplerate, callback, userData
-   PdGraph *graph = zg_new_graph(context, (char*)directory.c_str(), (char*)filename.c_str());
-   if (graph == NULL) {
-      zg_delete_context(context);
+// =====================
+// = INITIALIZE LIB PD =
+// =====================
+void initLibPd(){
+   libpd_init();
+   libpd_init_audio(2, 2, sampleRate, 1); //nInputs, nOutputs, sampleRate, ticksPerBuffer
+
+   // send compute audio 1 message to pd
+   libpd_start_message(1);
+   libpd_add_float(1.0f);
+   libpd_finish_message("pd", "dsp");
+
+   patchFile = libpd_openfile( (char*)filename.c_str(), (char*)directory.c_str() );
+   if (patchFile == NULL) {
       std::cout << "Could not open patch";
       exit(1);
    }
-
-   zg_attach_graph(context, graph);
 }
 
-void stopZengarden(){
-   zg_delete_context(context);
+void stopLibPd(){
+   libpd_closefile(patchFile);
 }
 
 // ========================
@@ -198,7 +202,7 @@ void initAudioIO(){
    inParameters.device = audioInDev;
    inParameters.sampleFormat = paFloat32;
 
-   err = Pa_OpenStream(&stream, &inParameters, &outParameters, sampleRate, bufferLength, paNoFlag, paCallback, context);
+   err = Pa_OpenStream(&stream, &inParameters, &outParameters, sampleRate, bufferLength, paNoFlag, paCallback, NULL);
    if(err!= paNoError){
       std::cout << "PortAudio error:" << Pa_GetErrorText( err );
       exit(1);
@@ -254,51 +258,14 @@ void stopAudioIO(){
    }
 }
 
-
-
 // =======================
 // = PORT AUDIO CALLBACK =
 // =======================
 static int paCallback( const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void *userData ){
-   PdContext *ctx = (PdContext*) userData;
    float *out = (float*)outputBuffer;
    float *in = (float*)inputBuffer;
+   
+   libpd_process_float(in, out);
 
-   //Zengarden works with noninterleaved buffers, portaudio works with interleaved. Changing input buffer to non-interleaved.
-   for (int i=0; i<bufferLength; i++) {
-      for (int channel = 0; channel < 2; channel++) {
-         input[i + channel*bufferLength] = in[i*2 + channel]; 
-      }
-   }
-
-   // Magic :)
-   zg_process(ctx, input, output);
-
-   //Zengarden works with noninterleaved buffers, portaudio works with interleaved. Changing output buffer to interleaved.
-   for (int i=0; i<bufferLength; i++) {
-      for (int channel = 0; channel < 2; channel++) {
-         out[i*2 + channel] = output[i + channel*bufferLength]; 
-      }
-   }
    return 0;
-}
-
-// ======================
-// = ZENGARDEN_CALLBACK =
-// ======================
-void zengardenCallback(ZGCallbackFunction function, void *userData, void *ptr) {
-   switch (function) {
-      case ZG_PRINT_STD: {
-         std::cout << "ZG_PRINT_STD: " << (char *)ptr << std::endl;
-         break;
-      }
-      case ZG_PRINT_ERR: {
-         std::cout << "ZG_PRINT_ERR: " << (char *)ptr << std::endl;
-         break;
-      }
-      case ZG_PD_DSP: {
-         std::cout << "ZG_PD_DSP: " << (char *)ptr << std::endl;
-         break;
-      }
-   }
 }

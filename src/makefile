@@ -5,18 +5,11 @@
 #  Created by Rafael Vega on 2011-03-02.
 #
 
-# Platform specific vars
-ifeq "$(shell uname)" "Darwin"
-MORE_LINKER_FLAGS = -framework CoreFoundation -framework CoreAudio -framework Accelerate -L../vendor/ZenGarden/libs/Darwin-i386
-else ifeq "$(shell uname)" "Linux"
-MORE_LINKER_FLAGS = 
-endif
-
 # Parameters
 COMPILER = g++
 LINKER = g++
-COMPILER_FLAGS = -Wall -g -c -I../vendor/ZenGarden/src
-LINKER_FLAGS = -lsndfile -lpthread -lportaudio -lzengarden
+COMPILER_FLAGS = -Wall -g -c -I../vendor/libpd/pure-data/src -I../vendor/libpd/libpd_wrapper
+LINKER_FLAGS = -lportaudio -lpd
 CPP_FILES = $(wildcard *.cpp)
 OBJECTS = $(notdir $(CPP_FILES:.cpp=.o)) # List of .cpp files with .o extension
 
